@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Texas Hold'em Poker with Chips & Icons</title>
+  <style>
+    body {
+      background-color: green;
+      font-family: sans-serif;
+      color: white;
+      text-align: center;
+      margin: 0;
+      padding: 0;
+    }
+    #table {
+      margin: 20px auto;
+      width: 900px;
+      border: 4px solid #fff;
+      border-radius: 10px;
+      padding: 20px;
+      background-color: #064d00;
+      box-shadow: 0 0 20px #000;
+    }
+    .card {
+      width: 60px;
+      height: 90px;
+      margin: 5px;
+      vertical-align: middle;
+    }
+    .hand {
+      margin-top: 10px;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #bank, #pot, #status {
+      font-weight: bold;
+      margin: 10px;
+      font-size: 18px;
+    }
+    #chips-container {
+      margin: 20px auto;
+      width: 900px;
+      display: flex;
+      justify-content: space-around;
+      font-weight: bold;
+      font-size: 18px;
+    }
+    #chips-container div {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .chip {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      border: 2px solid black;
+      display: inline-block;
+      margin: 2px;
+      box-shadow: inset 0 0 5px #fff;
+      cursor: default;
+    }
+    .red { background-color: red; }
+    .blue { background-color: blue; }
+    .green { background-color: green; }
+    .white { background-color: white; }
+    .black { background-color: black; }
+
+    /* Icons next to player/dealer */
+    #dealer-icon, #player-icon {
+      margin-left: 10px;
+      vertical-align: middle;
+      font-size: 24px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Texas Hold'em Poker</h1>
+  <div id="bank">Player Bank: $1000</div>
+  <div id="pot">Pot: $0</div>
+  <div id="status"></div>
+
+  <div id="chips-container">
+    <div>
+      Your Chips:
+      <div id="player-chips"></div>
+    </div>
+    <div>
+      Pot Chips:
+      <div id="pot-chips"></div>
+    </div>
+  </div>
+
+  <div id="table">
+    <h2>Community Cards</h2>
+    <div id="community-cards" class="hand"></div>
+
+    <h2>Dealer <span id="dealer-icon">👤</span> Hand</h2>
+    <div id="dealer-hand" class="hand"></div>
+
+    <h2>Player <span id="player-icon">🧑‍🎤</span> Hand</h2>
+    <div id="player-hand" class="hand"></div>
+  </div>
+
+  <div>
+    <button onclick="startGame()">Start Game</button>
+    <button onclick="playerAction('check')">Check</button>
+    <button onclick="playerAction('raise')">Raise $100</button>
+    <button onclick="playerAction('fold')">Fold</button>
+  </div>
+
+  <script>
+    const suits = ['♠', '♥', '♦', '♣'];
+    const ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+
+    let deck = [];
+    let playerHand = [];
+    let dealerHand = [];
+    let communityCards = [];
+    let pot = 0;
+    let playerBank = 1000;
+    let stage = 0;
+
+    function createDeck() {
+      deck = [];
+      for (let suit of suits) {
+        for (let rank of ranks) {
+          deck.push({ suit, rank });
+        }
+      }
+    }
+
+    function shuffleDeck() {
+      for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+      }
+    }
+
+    function dealCard() {
+      return deck.pop();
+    }
+
+    function getCardFilename(card) {
+      const rankMap = {
+        'A': 'A', 'K': 'K', 'Q': 'Q', 'J': 'J',
+        '10': 'T', '9': '9', '8': '8', '7': '7', '6': '6',
+        '5': '5', '4': '4', '3': '3', '2': '2'
+      };
+      const suitMap = { '♠': 'S', '♥': 'H', '♦': 'D', '♣': 'C' };
+      const rank = rankMap[card.rank];
+      const suit = suitMap[card.suit];
+      return `${rank}${suit}.svg`;
+    }
+
+    function renderCards(elementId, cards, hide = false) {
+      const container = document.getElementById(elementId);
+      container.innerHTML = '';
+      cards.forEach(card => {
+        const img = document.createElement('img');
+        img.className = 'card';
+        img.src = hide
+          ? 'https://raw.githubusercontent.com/backspace/svg-cards/main/cards/back.svg'
+          : `https://raw.githubusercontent.com/backspace/svg-cards/main/cards/${getCardFilename(card)}`;
+        container.appendChild(img);
+      });
+    }
+
+    function renderChips(containerId, amount) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = '';
+
+      const chipValues = [100, 50, 25, 10, 5, 1];
+      const chipColors = {
+        100: 'red',
+        50: 'blue',
+        25: 'green',
+        10: 'black',
+        5: 'white',
+        1: 'red',
+      };
+
+      let remaining = amount;
+
+      for (const val of chipValues) {
+        while (remaining >= val) {
+          const chip = document.createElement('div');
+          chip.classList.add('chip', chipColors[val]);
+          chip.title = `$${val} chip`;
+          container.appendChild(chip);
+          remaining -= val;
+        }
+      }
+    }
+
+    function updateDisplay() {
+      document.getElementById('bank').innerText = `Player Bank: $${playerBank}`;
+      document.getElementById('pot').innerText = `Pot: $${pot}`;
+      renderCards('community-cards', communityCards);
+      renderChips('player-chips', playerBank);
+      renderChips('pot-chips', pot);
+    }
+
+    function startGame() {
+      stage = 0;
+      pot = 0;
+      communityCards = [];
+      createDeck();
+      shuffleDeck();
+      playerHand = [dealCard(), dealCard()];
+      dealerHand = [dealCard(), dealCard()];
+      updateDisplay();
+      renderCards('player-hand', playerHand);
+      renderCards('dealer-hand', dealerHand, true);
+      document.getElementById('status').innerText = 'Your move!';
+    }
+
+    function playerAction(action) {
+      if (action === 'fold') {
+        document.getElementById('status').innerText = 'You folded. Dealer wins.';
+        endRound();
+        return;
+      }
+
+      if (action === 'raise') {
+        if (playerBank >= 100) {
+          playerBank -= 100;
+          pot += 100;
+        } else {
+          alert("Not enough money!");
+          return;
+        }
+      }
+
+      nextStage();
+    }
+
+    function nextStage() {
+      stage++;
+      if (stage === 1) {
+        communityCards.push(dealCard(), dealCard(), dealCard());
+      } else if (stage === 2) {
+        communityCards.push(dealCard());
+      } else if (stage === 3) {
+        communityCards.push(dealCard());
+      } else {
+        renderCards('dealer-hand', dealerHand, false);
+
+        const dealerCombo = dealerHand.concat(communityCards);
+        const action = dealerDecision(dealerCombo);
+
+        if (action === 'fold') {
+          document.getElementById('status').innerText = 'Dealer folded. You win!';
+          playerBank += pot;
+          endRound();
+          return;
+        } else if (action === 'raise') {
+          pot += 100;
+          document.getElementById('status').innerText = 'Dealer raised!';
+        } else {
+          document.getElementById('status').innerText = 'Dealer checked.';
+        }
+
+        evaluateHands();
+        return;
+      }
+
+      renderCards('community-cards', communityCards);
+      document.getElementById('status').innerText = `Next: ${['Flop', 'Turn', 'River'][stage - 1]}`;
+      updateDisplay();
+    }
+
+    function evaluateHands() {
+      const playerCombo = playerHand.concat(communityCards);
+      const dealerCombo = dealerHand.concat(communityCards);
+
+      const playerScore = evaluateHand(playerCombo);
+      const dealerScore = evaluateHand(dealerCombo);
+
+      let winnerText = '';
+      if (playerScore > dealerScore) {
+        playerBank += pot;
+        winnerText = 'You win!';
+      } else if (dealerScore > playerScore) {
+        winnerText = 'Dealer wins!';
+      } else {
+        playerBank += pot / 2;
+        winnerText = 'It\'s a tie!';
+      }
+
+      document.getElementById('status').innerText += ` ${winnerText}`;
+      endRound();
+    }
+
+    function endRound() {
+      pot = 0;
+      updateDisplay();
+    }
+
+    function dealerDecision(dealerCards) {
+      const score = evaluateHand(dealerCards);
+      if (score >= 7000000) return 'raise';
+      else if (score >= 2000000) return 'check';
+      else return 'fold';
+    }
+
+    function evaluateHand(cards) {
+      const combos = getFiveCardCombos(cards);
+      let best = 0;
+      for (let hand of combos) {
+        const score = scoreHand(hand);
+        if (score > best) best = score;
+      }
+      return best;
+    }
+
+    function getFiveCardCombos(cards) {
+      const results = [];
+      const combine = (start, combo) => {
+        if (combo.length === 5) {
+          results.push(combo);
+          return;
+        }
+        for (let i = start; i < cards.length; i++) {
+          combine(i + 1, combo.concat([cards[i]]));
+        }
+      };
+      combine(0, []);
+      return results;
+    }
+
+    function rankToValue(rank) {
+      if (rank === 'A') return 14;
+      if (rank === 'K') return 13;
+      if (rank === 'Q') return 12;
+      if (rank === 'J') return 11;
+      return parseInt(rank);
+    }
+
+    function checkStraight(values) {
+      const distinct = [...new Set(values)].sort((a, b) => b - a);
+      for (let i = 0; i <= distinct.length - 5; i++) {
+        if (
+          distinct[i] - 1 === distinct[i + 1] &&
+          distinct[i + 1] - 1 === distinct[i + 2] &&
+          distinct[i + 2] - 1 === distinct[i + 3] &&
+          distinct[i + 3] - 1 === distinct[i + 4]
+        ) {
+          return distinct[i];
+        }
+      }
+      // Check wheel straight (A-2-3-4-5)
+      if (
+        distinct.includes(14) &&
+        distinct.includes(5) &&
+        distinct.includes(4) &&
+        distinct.includes(3) &&
+        distinct.includes(2)
+      ) {
+        return 5;
+      }
+      return 0;
+    }
+
+    function kicker(values, exclude) {
+      // Sum of top 5 cards excluding certain values for tie-breakers
+      return values.filter(v => !exclude.includes(v)).slice(0, 5).reduce((a, b) => a * 15 + b, 0);
+    }
+
+    function scoreHand(hand) {
+      const counts = {};
+      const suitsCount = {};
+      const ranks = hand.map(c => c.rank);
+      const values = ranks.map(rankToValue).sort((a, b) => b - a);
+      for (let c of hand) {
+        counts[c.rank] = (counts[c.rank] || 0) + 1;
+        suitsCount[c.suit] = (suitsCount[c.suit] || 0) + 1;
+      }
+
+      const flush = Object.values(suitsCount).some(c => c === 5);
+      const straight = checkStraight(values);
+
+      if (flush && straight) {
+        return 9000000 + straight;
+      }
+
+      const fourKindRank = Object.keys(counts).find(r => counts[r] === 4);
+      if (fourKindRank) {
+        return 8000000 + rankToValue(fourKindRank) * 100 + kicker(values, [rankToValue(fourKindRank)]);
+      }
+
+      const threeKindRank = Object.keys(counts).find(r => counts[r] === 3);
+      const pairRanks = Object.keys(counts).filter(r => counts[r] === 2).map(rankToValue).sort((a,b)=>b-a);
+      if (threeKindRank && pairRanks.length > 0) {
+        return 7000000 + rankToValue(threeKindRank) * 100 + pairRanks[0];
+      }
+
+      if (flush) {
+        return 6000000 + kicker(values, []);
+      }
+
+      if (straight) {
+        return 5000000 + straight;
+      }
+
+      if (threeKindRank) {
+        return 4000000 + rankToValue(threeKindRank) * 100 + kicker(values, [rankToValue(threeKindRank)]);
+      }
+
+      if (pair
